@@ -52,6 +52,8 @@ async function acquireProtoc(version: string): Promise<string> {
   //
   // Download - a tool installer intimately knows how to get the tool (and construct urls)
   //
+
+  core.debug(`getting version '${version}'`);
   let fileName: string = getFileName(version);
   let downloadUrl: string = getDownloadUrl(version, fileName);
   let downloadPath: string | null = null;
@@ -85,13 +87,13 @@ function getFileName(version: string): string {
   const platform: string =
     osPlat == 'win32' ? 'win' : osPlat == 'darwin' ? 'osx-x86_' : 'linux-x86_';
   const arch: string = osArch == 'x64' ? '64' : '32';
-  const versionStripped = version.replace('v', '');
+  // const versionStripped = version.replace('v', '');
 
-  return `protoc-${versionStripped}-${platform}${arch}.zip`;
+  return `protoc-${version}-${platform}${arch}.zip`;
 }
 
 function getDownloadUrl(version: string, filename: string): string {
-  return `https://github.com/protocolbuffers/protobuf/releases/download/${version}/${filename}`;
+  return `https://github.com/protocolbuffers/protobuf/releases/download/v${version}/${filename}`;
 }
 
 // This function is required to convert the version 1.10 to 1.10.0.
@@ -171,8 +173,9 @@ async function getAvailableVersions(): Promise<string[]> {
     )).result || [];
 
   return tags
-    .filter(tag => tag.ref.match(/go\d+\.[\w\.]+/g))
-    .map(tag => tag.ref.replace('refs/tags/go', ''));
+    .filter(tag => tag.ref.match(/v\d+\.[\w\.]+/g))
+    .filter(tag => !tag.ref.match(/rc/g))
+    .map(tag => tag.ref.replace('refs/tags/v', ''));
 }
 
 async function getPossibleVersions(version: string): Promise<string[]> {
@@ -183,6 +186,8 @@ async function getPossibleVersions(version: string): Promise<string[]> {
   possibleVersions.forEach(v => versionMap.set(normalizeVersion(v), v));
 
   return Array.from(versionMap.keys())
-    .sort(semver.rcompare)
+    .sort((a, b) =>
+      semver.rcompare('' + semver.coerce(a), '' + semver.coerce(b))
+    )
     .map(v => versionMap.get(v));
 }
