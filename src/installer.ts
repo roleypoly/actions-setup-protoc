@@ -4,7 +4,6 @@ import * as core from '@actions/core';
 import * as tc from '@actions/tool-cache';
 import * as os from 'os';
 import * as path from 'path';
-import * as util from 'util';
 import * as semver from 'semver';
 import * as restm from 'typed-rest-client/RestClient';
 
@@ -26,7 +25,7 @@ if (!tempDirectory) {
   tempDirectory = path.join(baseLocation, 'actions', 'temp');
 }
 
-export async function getGo(version: string) {
+export async function getProtoc(version: string) {
   const selected = await determineVersion(version);
   if (selected) {
     version = selected;
@@ -34,15 +33,13 @@ export async function getGo(version: string) {
 
   // check cache
   let toolPath: string;
-  toolPath = tc.find('go', normalizeVersion(version));
+  toolPath = tc.find('protoc', normalizeVersion(version));
 
   if (!toolPath) {
     // download, extract, cache
-    toolPath = await acquireGo(version);
-    core.debug('Go tool is cached under ' + toolPath);
+    toolPath = await acquireProtoc(version);
+    core.debug('Protoc tool is cached under ' + toolPath);
   }
-
-  setGoEnvironmentVariables(toolPath);
 
   toolPath = path.join(toolPath, 'bin');
   //
@@ -51,12 +48,12 @@ export async function getGo(version: string) {
   core.addPath(toolPath);
 }
 
-async function acquireGo(version: string): Promise<string> {
+async function acquireProtoc(version: string): Promise<string> {
   //
   // Download - a tool installer intimately knows how to get the tool (and construct urls)
   //
   let fileName: string = getFileName(version);
-  let downloadUrl: string = getDownloadUrl(fileName);
+  let downloadUrl: string = getDownloadUrl(version, fileName);
   let downloadPath: string | null = null;
   try {
     downloadPath = await tc.downloadTool(downloadUrl);
@@ -74,51 +71,27 @@ async function acquireGo(version: string): Promise<string> {
     throw new Error('Temp directory not set');
   }
 
-  if (osPlat == 'win32') {
-    extPath = await tc.extractZip(downloadPath);
-  } else {
-    extPath = await tc.extractTar(downloadPath);
-  }
+  extPath = await tc.extractZip(downloadPath);
 
   //
   // Install into the local tool cache - node extracts with a root folder that matches the fileName downloaded
   //
-  const toolRoot = path.join(extPath, 'go');
+  const toolRoot = path.join(extPath, 'protoc');
   version = normalizeVersion(version);
-  return await tc.cacheDir(toolRoot, 'go', version);
+  return await tc.cacheDir(toolRoot, 'protoc', version);
 }
 
 function getFileName(version: string): string {
-  const platform: string = osPlat == 'win32' ? 'windows' : osPlat;
-  const arch: string = osArch == 'x64' ? 'amd64' : '386';
-  const ext: string = osPlat == 'win32' ? 'zip' : 'tar.gz';
-  const filename: string = util.format(
-    'go%s.%s-%s.%s',
-    version,
-    platform,
-    arch,
-    ext
-  );
-  return filename;
+  const platform: string =
+    osPlat == 'win32' ? 'win' : osPlat == 'darwin' ? 'osx-x86_' : 'linux-x86_';
+  const arch: string = osArch == 'x64' ? '64' : '32';
+  const versionStripped = version.replace('v', '');
+
+  return `protoc-${versionStripped}-${platform}${arch}.zip`;
 }
 
-function getDownloadUrl(filename: string): string {
-  return util.format('https://storage.googleapis.com/golang/%s', filename);
-}
-
-function setGoEnvironmentVariables(goRoot: string) {
-  core.exportVariable('GOROOT', goRoot);
-
-  const goPath: string = process.env['GOPATH'] || '';
-  const goBin: string = process.env['GOBIN'] || '';
-
-  // set GOPATH and GOBIN as user value
-  if (goPath) {
-    core.exportVariable('GOPATH', goPath);
-  }
-  if (goBin) {
-    core.exportVariable('GOBIN', goBin);
-  }
+function getDownloadUrl(version: string, filename: string): string {
+  return `https://github.com/protocolbuffers/protobuf/releases/download/${version}/${filename}`;
 }
 
 // This function is required to convert the version 1.10 to 1.10.0.
@@ -186,15 +159,15 @@ async function getLatestVersion(version: string): Promise<string> {
   return versions[0];
 }
 
-interface IGoRef {
+interface IProtocRef {
   ref: string;
 }
 
 async function getAvailableVersions(): Promise<string[]> {
-  let rest: restm.RestClient = new restm.RestClient('setup-go');
-  let tags: IGoRef[] =
-    (await rest.get<IGoRef[]>(
-      'https://api.github.com/repos/golang/go/git/refs/tags'
+  let rest: restm.RestClient = new restm.RestClient('setup-protoc');
+  let tags: IProtocRef[] =
+    (await rest.get<IProtocRef[]>(
+      'https://api.github.com/repos/protocolbuffers/protobuf/git/refs/tags'
     )).result || [];
 
   return tags
